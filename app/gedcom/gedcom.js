@@ -316,6 +316,137 @@ router.put("/puting", async (req, res) => {
         res.status(500).json({message: "Internal server error", error: err.message})
     }
 });
+router.put("/sync-media", async (req, res) => {
+    try {
+        console.log("Starting Media Sync..."); 
+
+        // Ensure variables are defined
+        if (!PROFILE_PHOTOS || !HISTORICAL_DOCS || !LITERACY_WORKS) {
+            console.log("Missing Google Drive folder IDs in environment variables.");
+        }
+
+        const processFolder = async (folderId, type) => {
+            if (!folderId) return;
+            let pageToken = null;
+            do {
+                const response = await drive.files.list({
+                    q: `'${folderId}' in parents and trashed = false`,
+                    fields: 'nextPageToken, files(id, name, mimeType, webViewLink)',
+                    pageToken: pageToken
+                });
+                
+                const files = response.data.files;
+                if (!files) break;
+
+                // Download JSON files if they exist to use as mapping
+                let mappingJson = null;
+                const jsonFile = files.find(f => f.mimeType === 'application/json' || f.name.endsWith('.json'));
+                if (jsonFile) {
+                    const jsonRes = await drive.files.get({ fileId: jsonFile.id, alt: 'media' }, { responseType: 'json' });
+                    mappingJson = jsonRes.data;
+                }
+
+                for (const file of files) {
+                    if (file.mimeType === 'application/json' || file.name.endsWith('.json')) continue;
+                    
+                    // Match I-numbers (e.g., I1, I14)
+                    const idMatch = file.name.match(/I\d+/);
+                    const sharingUrl = file.webViewLink || `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
+                    
+                    if (type === 'PROFILE_PHOTOS' && idMatch) {
+                        const id = idMatch[0];
+                        const { error } = await supabase.from("individuals")
+                            .update({ googleurl: sharingUrl })
+                            .eq("id", id);
+                        if (error) console.error(`Error updating ${id}:`, error);
+                    } else if (type === 'HISTORICAL_DOCS' || type === 'LITERACY_WORKS') {
+                        if (idMatch) {
+                            const id = idMatch[0];
+                            const { data: ind } = await supabase.from("individuals").select("raw_metadata, relativelinks").eq("id", id).single();
+                            if (ind) {
+                                // Keep raw_metadata logic just in case, but primary update is relativelinks
+                                const meta = ind.raw_metadata || {};
+                                if (!meta.historical_docs) meta.historical_docs = [];
+                                if (!meta.historical_docs.some(d => d.id === file.id)) {
+                                    meta.historical_docs.push({ id: file.id, name: file.name, url: sharingUrl });
+                                }
+                                
+                                const relLinks = Array.isArray(ind.relativelinks) ? [...ind.relativelinks] : [];
+                                const linkExists = relLinks.some(r => {
+                                    if (typeof r === 'string') return r === sharingUrl;
+                                    return r.url === sharingUrl || r.title === file.name;
+                                });
+                                if (!linkExists) {
+                                    relLinks.push({ url: sharingUrl, title: file.name, type: 'Historical Document' });
+                                }
+
+                                const { error: histError } = await supabase.from("individuals").update({ 
+                                    relativelinks: relLinks 
+                                }).eq("id", id);
+                                if (histError) console.error(`Error updating hist docs for ${id}:`, histError);
+                            }
+                        } else if (mappingJson && Array.isArray(mappingJson)) {
+                            // Match via JSON mapping
+                            // E.g., PUB_1.pdf -> matching "PUB_1" in JSON
+                            const baseName = file.name.split('.')[0];
+                            const mapEntry = mappingJson.find(m => m.id === baseName);
+                            if (mapEntry) {
+                                await supabase.from("publications").upsert({
+                                    id: mapEntry.id,
+                                    title: mapEntry.title || file.name,
+                                    publication_year: mapEntry.publication_year || null,
+                                    publisher: mapEntry.publisher || '',
+                                    description: mapEntry.description || '',
+                                    gdrive_file_id: file.id
+                                });
+                                
+                                const individualsList = Array.isArray(mapEntry.author_ids) ? mapEntry.author_ids : (Array.isArray(mapEntry.individuals) ? mapEntry.individuals : null);
+                                if (individualsList) {
+                                    for (const indId of individualsList) {
+                                        await supabase.from("individual_publications").upsert({
+                                            individual_id: indId,
+                                            publication_id: mapEntry.id,
+                                            contribution_type: mapEntry.contribution_type || 'subject'
+                                        }); 
+                                        
+                                        // Store the PDF/file sharing URL in the individual's relativelinks array
+                                        const { data: ind } = await supabase.from("individuals").select("relativelinks").eq("id", indId).single();
+                                        if (ind) {
+                                            const relLinks = Array.isArray(ind.relativelinks) ? [...ind.relativelinks] : [];
+                                            const linkExists = relLinks.some(r => {
+                                                if (typeof r === 'string') return r === sharingUrl;
+                                                const newTitle = mapEntry.title || file.name;
+                                                return r.url === sharingUrl || r.title === newTitle;
+                                            });
+                                            if (!linkExists) {
+                                                relLinks.push({ url: sharingUrl, title: mapEntry.title || file.name, type: 'Literacy Work' });
+                                                await supabase.from("individuals").update({ relativelinks: relLinks }).eq("id", indId);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                pageToken = response.data.nextPageToken;
+            } while (pageToken);
+        };
+
+        console.log("Processing Profile Photos...");
+        await processFolder(PROFILE_PHOTOS, 'PROFILE_PHOTOS');
+        console.log("Processing Historical Docs...");
+        await processFolder(HISTORICAL_DOCS, 'HISTORICAL_DOCS');
+        console.log("Processing Literary Works...");
+        await processFolder(LITERACY_WORKS, 'LITERACY_WORKS');
+
+        console.log("Media Sync Complete!");
+        res.status(200).json({ message: "Media Sync complete successfully!" });
+    } catch(err) {
+        console.error("Media Sync Error:", err);
+        res.status(500).json({message: "Internal server error", error: err.message});
+    }
+});
 
 router.get("/geting", async (req, res) => {
     try {
