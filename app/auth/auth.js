@@ -36,6 +36,7 @@ router.post("/login", async (req, res) => {
             return res.status(403).json({ message: "User is not approved for access" });
         }
     } catch (err) {
+     console.log(err);
         console.error(err);
         return res.status(500).json({ message: "Internal server error" });
     }
@@ -50,10 +51,12 @@ router.post("/signup",async(req,res)=>{
      .from('person')
      .insert({name,email,mobile:phonenumber,password})
      
-     if (error) throw error;
+      if (error) throw error;
      
-     res.status(201).json({message:"User created successfully", data});
-   }catch(err){
+    
+      res.status(201).json({message:"User created successfully", data});
+ 
+    }catch(err){
     console.error(err);
     res.status(500).json({message:"Internal server error"})
    }
@@ -74,17 +77,18 @@ router.post("/oauth-login", async (req, res) => {
         
         const { data: existingUser } = await db.supabase
             .from('loggedin')
+            
             .select('*')
             .eq('id', user.id);
             
         
-        if (!existingUser || existingUser.length === 0) {
+         if (!existingUser || existingUser.length === 0) {
             
             
-            try {
+             try {
                 await db.supabaseAdmin.auth.admin.deleteUser(user.id);
-            } catch (delErr) {
-                console.error("Failed to clean up unapproved user:", delErr);
+              } catch (delErr) {
+                  console.error("Failed to clean up unapproved user:", delErr);
             }
             return res.status(403).json({ message: "Access Denied. You must request access first." });
         }
@@ -93,10 +97,12 @@ router.post("/oauth-login", async (req, res) => {
         
         
         const token = jwt.sign({
+       
             id: dbUser.id,
             name: dbUser.name,
-            email: user.email, 
-            role: dbUser.role
+              email: user.email, 
+          
+              role: dbUser.role
         }, process.env.JWT_SECRET || "secretkey", { expiresIn: "1h" });
         
         return res.status(200).json({ message: "User logged in via Google successfully", token, data: dbUser });
@@ -109,8 +115,11 @@ router.post("/oauth-login", async (req, res) => {
 router.get("/google-url", async (req, res) => {
     try {
         const redirectTo = req.query.redirectTo || 'http://localhost:3000/archieve_login';
+       
         const { data, error } = await db.supabase.auth.signInWithOAuth({
+           
             provider: 'google',
+           
             options: {
                 redirectTo: redirectTo
             }
