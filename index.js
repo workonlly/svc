@@ -18,8 +18,8 @@ app.use("/handle", handle);
 app.use("/canvas", canvas);
 app.use("/gedcom", gedcom);
 
-app.get("/",middleware, (req, res) => {
-    res.send("Hello World!");
+app.get("/", middleware, (req, res) => {
+    res.json({ is_authenticated: true, user: req.user });
 });
 
 app.listen(4000, () => {
