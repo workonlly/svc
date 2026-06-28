@@ -71,14 +71,14 @@ router.delete("/removeuser", async (req, res) => {
     try {
         const { id } = req.body;
         
-        // 1. Delete from loggedin table explicitly
+        
         const { error: loggedInError } = await db.supabase
             .from('loggedin')
             .delete()
             .eq('id', id);
         if (loggedInError) throw loggedInError;
 
-        // 2. Delete from auth.users
+        
         const { data, error } = await db.supabaseAdmin.auth.admin.deleteUser(id);
         if (error) throw error;
         
@@ -93,7 +93,7 @@ router.post("/contact",async(req,res)=>{
     try{
         const {name,email,title,message}=req.body;
         
-        // Check for 1 minute cooldown
+        
         const oneMinuteAgo = new Date(Date.now() - 60000).toISOString();
         const { data: recentQuery, error: recentError } = await db.supabase
             .from('contactquery')

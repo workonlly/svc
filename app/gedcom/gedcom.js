@@ -9,7 +9,7 @@ const PROFILE_PHOTOS = process.env.NEXT_PUBLIC_PROFILE_PHOTOS;
 const LITERACY_WORKS = process.env.NEXT_PUBLIC_LITERACY_WORKS;
 const HISTORICAL_DOCS = process.env.NEXT_PUBLIC_HISTORICAL_DOCS;
 
-// Helper function to prevent Payload Too Large errors during bulk database inserts
+
 const chunkArray = (arr, size) => 
     Array.from({ length: Math.ceil(arr.length / size) }, (v, i) => arr.slice(i * size, i * size + size));
 
@@ -21,12 +21,12 @@ router.put("/puting", async (req, res) => {
             return res.status(400).json({message: "MAIN_FOLDER env variable is not set."});
         }
 
-        // 1. Scan Root (STRICTLY looking for the .ged file ONLY)
+        
         console.log("Locating GEDCOM file...");
         const response = await drive.files.list({
             q: `'${MAIN_FOLDER}' in parents and trashed = false and fileExtension = 'ged'`,
             fields: 'files(id, name)',
-            pageSize: 1 // We only need the single file
+            pageSize: 1 
         });
 
         if (!response.data.files || response.data.files.length === 0) {
@@ -35,17 +35,17 @@ router.put("/puting", async (req, res) => {
 
         const gedcomFileId = response.data.files[0].id;
 
-        // 2. Clear Bridge Tables ONLY
+        
         console.log("Wiping Bridge Tables...");
         await supabase.from("individual_publications").delete().neq("id", 0);
         await supabase.from("family_children").delete().neq("id", 0);
 
-        // Track parsed IDs for Delta Sync Pruning
+        
         const parsedIndividualIds = new Set();
         const parsedFamilyIds = new Set();
         const parsedPublicationIds = new Set();
 
-        // 3. Process GEDCOM
+        
         console.log("Downloading and Parsing GEDCOM...");
         const gedcomRes = await drive.files.get({ fileId: gedcomFileId, alt: 'media' }, { responseType: 'stream' });
         
@@ -126,7 +126,7 @@ router.put("/puting", async (req, res) => {
                     else rawMeta[childTag] = child.value;
                 }
 
-                // FK Sanitization: Prevent orphaned or empty references that violate database constraints
+                
                 if (!husband_id || !parsedIndividualIds.has(husband_id)) husband_id = null;
                 if (!wife_id || !parsedIndividualIds.has(wife_id)) wife_id = null;
 
@@ -146,7 +146,7 @@ router.put("/puting", async (req, res) => {
 
         console.log(`Upserting ${individualsBatch.length} individuals, ${familiesBatch.length} families...`);
         
-        // Safely Chunk the Core Upserts
+        
         if (individualsBatch.length > 0) {
             for (const chunk of chunkArray(individualsBatch, 500)) {
                 const { error } = await supabase.from('individuals').upsert(chunk);
@@ -166,7 +166,7 @@ router.put("/puting", async (req, res) => {
             }
         }
 
-        // 4. Process Profile Photos (Using .env variable)
+        
         if (PROFILE_PHOTOS) {
             console.log("Processing Profile Photos...");
             const photosRes = await drive.files.list({
@@ -185,7 +185,7 @@ router.put("/puting", async (req, res) => {
             }
         }
 
-        // 5. Process Historical Docs (Using .env variable)
+        
         const publicationsBatch = [];
         const individualPubsBatch = [];
 
@@ -220,7 +220,7 @@ router.put("/puting", async (req, res) => {
             }
         }
 
-        // 6. Process Literary Works (Using .env variable)
+        
         if (LITERACY_WORKS) {
             console.log("Processing Literary Works...");
             const litWorksRes = await drive.files.list({
@@ -241,7 +241,7 @@ router.put("/puting", async (req, res) => {
                 
                 let libraryData = [];
                 try {
-                    // Safety Trap to prevent syntax errors from crashing the entire sync
+                    
                     libraryData = JSON.parse(jsonDataStr);
                 } catch (jsonError) {
                     console.warn("WARNING: publications.json is malformed. Skipping Literary Works sync.");
@@ -256,7 +256,7 @@ router.put("/puting", async (req, res) => {
                         publication_year: item.publication_year || null,
                         publisher: item.publisher || null,
                         description: item.description || null,
-                        // Assumes you made this optional in DB, or added it to the JSON
+                        
                         gdrive_file_id: item.gdrive_file_id || null 
                     });
 
@@ -274,7 +274,7 @@ router.put("/puting", async (req, res) => {
         }
 
         console.log(`Upserting ${publicationsBatch.length} publications...`);
-        // Safely Chunk the Media Upserts
+        
         if (publicationsBatch.length > 0) {
             for (const chunk of chunkArray(publicationsBatch, 500)) {
                 await supabase.from('publications').upsert(chunk);
@@ -286,7 +286,7 @@ router.put("/puting", async (req, res) => {
             }
         }
 
-        // 7. PRUNING (Delete rows in DB that are not in Google Drive)
+        
         console.log("Pruning old data...");
         
         const pruneTable = async (tableName, parsedSet) => {
@@ -320,7 +320,7 @@ router.put("/sync-media", async (req, res) => {
     try {
         console.log("Starting Media Sync..."); 
 
-        // Ensure variables are defined
+        
         if (!PROFILE_PHOTOS || !HISTORICAL_DOCS || !LITERACY_WORKS) {
             console.log("Missing Google Drive folder IDs in environment variables.");
         }
@@ -338,7 +338,7 @@ router.put("/sync-media", async (req, res) => {
                 const files = response.data.files;
                 if (!files) break;
 
-                // Download JSON files if they exist to use as mapping
+                
                 let mappingJson = null;
                 const jsonFile = files.find(f => f.mimeType === 'application/json' || f.name.endsWith('.json'));
                 if (jsonFile) {
@@ -349,7 +349,7 @@ router.put("/sync-media", async (req, res) => {
                 for (const file of files) {
                     if (file.mimeType === 'application/json' || file.name.endsWith('.json')) continue;
                     
-                    // Match I-numbers (e.g., I1, I14)
+                    
                     const idMatch = file.name.match(/I\d+/);
                     const sharingUrl = file.webViewLink || `https://drive.google.com/file/d/${file.id}/view?usp=sharing`;
                     
@@ -364,7 +364,7 @@ router.put("/sync-media", async (req, res) => {
                             const id = idMatch[0];
                             const { data: ind } = await supabase.from("individuals").select("raw_metadata, relativelinks").eq("id", id).single();
                             if (ind) {
-                                // Keep raw_metadata logic just in case, but primary update is relativelinks
+                                
                                 const meta = ind.raw_metadata || {};
                                 if (!meta.historical_docs) meta.historical_docs = [];
                                 if (!meta.historical_docs.some(d => d.id === file.id)) {
@@ -386,8 +386,8 @@ router.put("/sync-media", async (req, res) => {
                                 if (histError) console.error(`Error updating hist docs for ${id}:`, histError);
                             }
                         } else if (mappingJson && Array.isArray(mappingJson)) {
-                            // Match via JSON mapping
-                            // E.g., PUB_1.pdf -> matching "PUB_1" in JSON
+                            
+                            
                             const baseName = file.name.split('.')[0];
                             const mapEntry = mappingJson.find(m => m.id === baseName);
                             if (mapEntry) {
@@ -409,7 +409,7 @@ router.put("/sync-media", async (req, res) => {
                                             contribution_type: mapEntry.contribution_type || 'subject'
                                         }); 
                                         
-                                        // Store the PDF/file sharing URL in the individual's relativelinks array
+                                        
                                         const { data: ind } = await supabase.from("individuals").select("relativelinks").eq("id", indId).single();
                                         if (ind) {
                                             const relLinks = Array.isArray(ind.relativelinks) ? [...ind.relativelinks] : [];

@@ -26,7 +26,7 @@ router.post("/post", async(req, res) => {
             return res.status(500).json({message: "Failed to create user"})
         }
 
-        // 2. Insert into loggedin table
+        
         const { error: insertError } = await db.supabase
             .from("loggedin")
             .insert({

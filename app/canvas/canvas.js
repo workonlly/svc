@@ -6,7 +6,7 @@ router.get("/data", async (req, res) => {
     const startdefault = req.query.person || "Areeb";
 
     try {
-        // 1. Get the starting person
+        
         const { data: rootPerson } = await supabaseAdmin
             .from("individuals")
             .select("*")
@@ -16,35 +16,35 @@ router.get("/data", async (req, res) => {
 
         if (!rootPerson) return res.status(404).json({ error: "Person not found" });
 
-        // 2. Setup the "Bubbling" Arrays
-        const queue = [rootPerson.id]; // The array we iterate through
-        const result = [rootPerson];   // The final list of people to send to the frontend
-        const seenIds = new Set([rootPerson.id]); // Keeps track so we don't infinite loop
-        const allFamilyIds = new Set(); // Keep track of all family connections
+        
+        const queue = [rootPerson.id]; 
+        const result = [rootPerson];   
+        const seenIds = new Set([rootPerson.id]); 
+        const allFamilyIds = new Set(); 
 
-        // 3. The Queue Loop (Stops when we hit 30 people or run out of connections)
+        
         let i = 0;
         while (i < queue.length && result.length < 30) {
-            const currentId = queue[i]; // Grab the current person
+            const currentId = queue[i]; 
 
-            // Fetch all their relatives
+            
             const { profiles, relatedFamilyIds } = await fetchAllConnections(currentId);
 
             if (relatedFamilyIds) {
                 relatedFamilyIds.forEach(id => allFamilyIds.add(id));
             }
 
-            // Loop through the new relatives
+            
             for (const relative of profiles) {
-                // If we haven't seen them yet, and we are under the 30 person limit
+                
                 if (!seenIds.has(relative.id) && result.length < 30) {
-                    seenIds.add(relative.id);      // Mark as seen
-                    result.push(relative);         // Save to final output
-                    queue.push(relative.id);       // Push to the back of the queue!
+                    seenIds.add(relative.id);      
+                    result.push(relative);         
+                    queue.push(relative.id);       
                 }
             }
 
-            i++; // Move to the next person in the queue
+            i++; 
         }
 
         let families = [];
@@ -58,7 +58,7 @@ router.get("/data", async (req, res) => {
             if (fcData) family_children = fcData;
         }
 
-        // Fetch any missing individuals that are part of these families!
+        
         const missingIds = new Set();
         families.forEach(f => {
             if (f.husband_id && !seenIds.has(f.husband_id)) missingIds.add(f.husband_id);
@@ -78,14 +78,14 @@ router.get("/data", async (req, res) => {
             }
         }
 
-        // Send the flat array of 30 people back
+        
         res.json({
             count: result.length,
             individuals: result,
             families,
             family_children,
             startPersonId: rootPerson.id,
-            expandableIds: [] // disable expandable nodes for now since we cap at 30
+            expandableIds: [] 
         });
 
     } catch (err) {
@@ -96,10 +96,10 @@ router.get("/data", async (req, res) => {
 
 async function fetchAllConnections(id) {
     try {
-        // 1. Where they are a child (Finds Parents & Siblings)
+        
         const { data: asChild } = await supabaseAdmin.from("family_children").select("family_id").eq("child_id", id);
 
-        // 2. Where they are a spouse (Finds Spouses & their Children)
+        
         const { data: asSpouse } = await supabaseAdmin.from("families").select("id").or(`husband_id.eq.${id},wife_id.eq.${id}`);
 
         const familyIds = [
@@ -109,7 +109,7 @@ async function fetchAllConnections(id) {
 
         if (familyIds.length === 0) return { profiles: [], relatedFamilyIds: [] };
 
-        // 3. Get all people attached to these families
+        
         const { data: families } = await supabaseAdmin.from("families").select("husband_id, wife_id").in("id", familyIds);
         const { data: children } = await supabaseAdmin.from("family_children").select("child_id").in("family_id", familyIds);
 
@@ -124,10 +124,10 @@ async function fetchAllConnections(id) {
             children.forEach(c => connectedIds.add(c.child_id));
         }
 
-        // Remove the original person from the results so we don't fetch them again
+        
         connectedIds.delete(id);
 
-        // Fetch their profiles
+        
         const { data: profiles } = await supabaseAdmin.from("individuals").select("*").in("id", Array.from(connectedIds));
         return { profiles: profiles || [], relatedFamilyIds: familyIds };
     } catch (err) {

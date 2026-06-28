@@ -5,7 +5,7 @@ const jwt = require("jsonwebtoken")
 
 router.post("/login", async (req, res) => {
     try {
-        // 1. Authenticate with Supabase
+        
         const { data: authData, error: authError } = await db.supabase.auth.signInWithPassword({
             email: req.body.email,
             password: req.body.password
@@ -15,7 +15,7 @@ router.post("/login", async (req, res) => {
             return res.status(401).json({ message: "Ask for Acess first" });
         }
 
-        // 2. Fetch user details from loggedin table using the id
+        
         const { data, error } = await db.supabase
             .from('loggedin')
             .select('*')
@@ -29,7 +29,7 @@ router.post("/login", async (req, res) => {
                 name: data[0].name,
                 email: authData.user.email,
                 role: data[0].role
-            }, "secretkey", { expiresIn: "1h" });
+            }, process.env.JWT_SECRET || "secretkey", { expiresIn: "1h" });
             
             return res.status(200).json({ message: "User logged in successfully", token, data: data[0] });
         } else {
@@ -63,24 +63,24 @@ router.post("/oauth-login", async (req, res) => {
     try {
         const { access_token } = req.body;
         
-        // 1. Verify token with Supabase (checks if they are a valid auth.users account)
+        
         const { data: { user }, error } = await db.supabase.auth.getUser(access_token);
         
-        // If not found in auth.users or token is invalid, show the access denied popup
+        
         if (error || !user) {
             return res.status(403).json({ message: "Access Denied. You must request access first." });
         }
         
-        // 2. Fetch their details from loggedin (this proves if the admin approved them)
+        
         const { data: existingUser } = await db.supabase
             .from('loggedin')
             .select('*')
             .eq('id', user.id);
             
-        // 3. If they aren't in the loggedin table, they are NOT approved.
+        
         if (!existingUser || existingUser.length === 0) {
-            // Because Supabase automatically adds anyone who clicks Google Login to auth.users,
-            // we must cleanly delete them immediately so they don't clutter your Auth dashboard.
+            
+            
             try {
                 await db.supabaseAdmin.auth.admin.deleteUser(user.id);
             } catch (delErr) {
@@ -91,13 +91,13 @@ router.post("/oauth-login", async (req, res) => {
         
         const dbUser = existingUser[0];
         
-        // 4. Generate custom JWT
+        
         const token = jwt.sign({
             id: dbUser.id,
             name: dbUser.name,
-            email: user.email, // email comes from auth.users, not loggedin table
+            email: user.email, 
             role: dbUser.role
-        }, "secretkey", { expiresIn: "1h" });
+        }, process.env.JWT_SECRET || "secretkey", { expiresIn: "1h" });
         
         return res.status(200).json({ message: "User logged in via Google successfully", token, data: dbUser });
     } catch (err) {
