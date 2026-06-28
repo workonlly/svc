@@ -106,4 +106,23 @@ router.post("/oauth-login", async (req, res) => {
     }
 });
 
+router.get("/google-url", async (req, res) => {
+    try {
+        const redirectTo = req.query.redirectTo || 'http://localhost:3000/archieve_login';
+        const { data, error } = await db.supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: redirectTo
+            }
+        });
+        
+        if (error) throw error;
+        
+        return res.status(200).json({ url: data.url });
+    } catch (err) {
+        console.error("Error generating Google URL:", err);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
 module.exports=router;
