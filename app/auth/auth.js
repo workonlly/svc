@@ -47,7 +47,7 @@ router.post("/login", async (req, res) => {
 router.post("/signup", async (req, res) => {
     const { name, email, phonenumber, password } = req.body;
     try {
-        const { data, error } = await db.supabase
+        const { data, error } = await db.supabaseAdmin
             .from('person')
             .insert({ name, email, mobile: phonenumber, password })
 
@@ -57,8 +57,8 @@ router.post("/signup", async (req, res) => {
         res.status(201).json({ message: "User created successfully", data });
 
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: "Internal server error" })
+        console.error("Signup error:", err);
+        res.status(500).json({ message: err.message || "Internal server error" })
     }
 })
 
