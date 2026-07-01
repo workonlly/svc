@@ -114,7 +114,7 @@ router.post("/oauth-login", async (req, res) => {
 
 router.get("/google-url", async (req, res) => {
     try {
-        const redirectTo = req.query.redirectTo || 'http://localhost:3000/archieve_login';
+        const redirectTo = req.query.redirectTo ;
        
         const { data, error } = await db.supabase.auth.signInWithOAuth({
            
